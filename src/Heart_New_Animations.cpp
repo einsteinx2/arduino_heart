@@ -1,14 +1,34 @@
-#include "FastLED.h"
+#include <Arduino.h>
+
+#include <FastLED.h>
 #include <EEPROM.h>
 
 #define ENABLE_BRIGHTNESS true
 #define ENABLE_SERIAL false
 
 void runAnimation(unsigned long frameDelay, boolean resetAnimation, void (*animation)(uint8_t*, void*), void *params);
-//void runAnimation(uint8_t frameDelay = 50, boolean resetAnimation = false);
-
-//typedef void (*Animation)(uint8_t frame, void *params);
-
+void runFlashlight();
+void runDemoAnimation(boolean resetAnimation);
+void runHeartbeat(boolean resetAnimation);
+void runRainbow(boolean resetAnimation);
+void runColorCycle(boolean resetAnimation);
+void runColorCycleRainbow(boolean resetAnimation);
+void runTheaterRainbow(boolean resetAnimation);
+void runAnimation(unsigned long frameDelay, boolean resetAnimation, void (*animation)(uint8_t*, void*), void *params);
+void colorCycleInnerToOuter(double msDelay, const CRGB colors[], uint8_t length);
+void colorCycleInnerToOuterRainbow(double msDelay);
+void heartBeat(double bpm, CRGB color1, boolean doubleBeat, CRGB color2);
+void innerToOuter(uint16_t msDelay, CRGB color, boolean reverse, boolean skipOuter);
+void outerToInner(uint16_t msDelay, CRGB color, boolean reverse, boolean skipOuter);
+void rainbow(uint8_t *frame, void *params);
+void rainbowCycle(uint8_t *frame, void *params);
+void theaterChaseRainbow(uint8_t *frame, void *params);
+void readModeStateFromEEPROM();
+void writeModeStateToEEPROM(uint8_t state);
+void attachButtonInterrupt();
+void buttonPressed();
+void checkBrightness();
+CRGB colorWheel(byte wheelPos);
 
 typedef struct {
     CRGB color;
@@ -45,24 +65,24 @@ const CRGB kItsAllAboutLove[]  = { CRGB(137,  23,   5),
                                    CRGB(199,  53, 105),
                                    CRGB(229, 103, 155),
                                    CRGB(239, 183, 195) };
-                                      
+
 const CRGB kGreatReds[]        = { CRGB(190,   0,   0),
                                    CRGB(191,  13,   7),
                                    CRGB(163,   3,  17),
                                    CRGB(163,   8,  13),
                                    CRGB(158,  12, 12) };
-                                      
+
 const CRGB kINeedToMeetYou[]   = { CRGB(102, 53,   43),
                                    CRGB(117, 44,   69),
                                    CRGB( 66,  62, 124),
                                    CRGB( 39, 148, 176),
                                    CRGB(109, 244, 227) };
-                                      
+
 const CRGB kLavenderLovelies[] = { CRGB( 99,  34, 118),
                                    CRGB(141,  64, 162),
                                    CRGB(177, 102, 198),
                                    CRGB(198, 132, 216),
-                                   CRGB(222, 169, 237) };    
+                                   CRGB(222, 169, 237) };
 
 /*
  * Arduino Functions
@@ -94,12 +114,12 @@ volatile uint8_t currentMode = 0;
 volatile bool flashlight = false;
 uint8_t lastMode = 0;
 
-void setup() 
+void setup()
 {
 #if ENABLE_SERIAL
     Serial.begin(9600);
 #endif
-   
+
     FastLED.addLeds<NEOPIXEL, kDataPin>(leds, kNumLeds);
 
 #if ENABLE_BRIGHTNESS
@@ -118,7 +138,7 @@ unsigned long skippedFrames = 0;
 int frameDurations[10];
 int frameDurationIndex = 0;
 
-void loop() 
+void loop()
 {
 #if ENABLE_BRIGHTNESS
     checkBrightness();
@@ -137,8 +157,8 @@ void loop()
             lastMode = currentMode;
             writeModeStateToEEPROM(currentMode);
         }
-    
-        // Run the animation for this mode  
+
+        // Run the animation for this mode
         switch(currentMode)
         {
             //case DEMO_ANIMATION:      runDemoAnimation(modeChanged);     break;
@@ -150,7 +170,7 @@ void loop()
 #if ENABLE_EQUALIZER
             case EQUALIZER:           runEqualizer(modeChanged);         break;
 #endif
-        
+
             //default: runDemoAnimation(modeChanged); break;
             default: runHeartbeat(modeChanged); break;
         }
@@ -164,7 +184,7 @@ void runFlashlight()
 
 void runDemoAnimation(boolean resetAnimation)
 {
-    
+
 }
 
 void runHeartbeat(boolean resetAnimation)
@@ -196,7 +216,7 @@ void runAnimation(unsigned long frameDelay, boolean resetAnimation, void (*anima
 {
     static uint8_t frame = 0;
     static unsigned long lastCallTime = millis();
-    
+
     if (resetAnimation)
     {
         frame = 0;
@@ -234,7 +254,7 @@ void runAnimation(unsigned long frameDelay, boolean resetAnimation, void (*anima
 // Cycle colors, ring by ring, starting from the center
 // NEEDS TO BE REWRITTEN USING FRAME ANIMATION
 void colorCycleInnerToOuter(double msDelay, const CRGB colors[], uint8_t length)
-{            
+{
     for (int i = 0; i < length; i++)
     {
         const CRGB color = colors[i];
@@ -259,15 +279,15 @@ void heartBeat(double bpm, CRGB color1, boolean doubleBeat, CRGB color2)
     double beatsPerSecond = bpm / 60.0;
     double iterationLength = 1 / beatsPerSecond;
     double msDelay = (iterationLength * 1000) - (35 * 5) - (doubleBeat ? 50 - (25 * 3) : 0);
-  
+
     innerToOuter(35, color1, true, false);
-  
+
     if (doubleBeat)
     {
         delay(50);
         innerToOuter(25, color2, true, true);
-    } 
-  
+    }
+
     delay(msDelay);
 }
 
@@ -279,18 +299,18 @@ void innerToOuter(uint16_t msDelay, CRGB color, boolean reverse, boolean skipOut
     {
         const uint8_t pixel = kInnerLeds[i];
         leds[pixel] = color;
-    } 
+    }
     FastLED.show();
     delay(msDelay);
-    
+
     for (uint8_t i = 0; i < kMiddleLedsLength; i++)
     {
         const uint8_t pixel = kMiddleLeds[i];
         leds[pixel] = color;
     }
-    FastLED.show(); 
+    FastLED.show();
     delay(msDelay);
-    
+
     if (!skipOuter)
     {
         for (uint8_t i = 0; i < kOuterLedsLength; i++)
@@ -300,7 +320,7 @@ void innerToOuter(uint16_t msDelay, CRGB color, boolean reverse, boolean skipOut
         }
         FastLED.show();
     }
-    
+
     if (reverse)
     {
         delay(msDelay);
@@ -319,25 +339,25 @@ void outerToInner(uint16_t msDelay, CRGB color, boolean reverse, boolean skipOut
             const uint8_t pixel = kOuterLeds[i];
             leds[pixel] = color;
         }
-        FastLED.show(); 
+        FastLED.show();
         delay(msDelay);
     }
-    
+
     for (uint8_t i = 0; i < kMiddleLedsLength; i++)
     {
         const uint8_t pixel = kMiddleLeds[i];
         leds[pixel] = color;
     }
-    FastLED.show(); 
+    FastLED.show();
     delay(msDelay);
-    
+
     for (uint8_t i = 0; i < kInnerLedsLength; i++)
     {
         const uint8_t pixel = kInnerLeds[i];
         leds[pixel] = color;
     }
     FastLED.show();
-    
+
     if (reverse)
     {
         innerToOuter(msDelay, CRGB::Black, false, skipOuter);
@@ -351,14 +371,14 @@ void rainbow(uint8_t *frame, void *params)
     {
         leds[i] = colorWheel((i + *frame) & 255);
     }
-    
+
     FastLED.show();
 }
 
 // Slightly different, this makes the rainbow equally distributed throughout
 void rainbowCycle(uint8_t *frame, void *params)
 {
-    for (int i = 0; i < kNumLeds; i++) 
+    for (int i = 0; i < kNumLeds; i++)
     {
         leds[i] = colorWheel(((i * 256 / kNumLeds) + *frame) & 255);
     }
@@ -372,13 +392,13 @@ void theaterChaseRainbow(uint8_t *frame, void *params)
     const uint8_t offset = *frame % 3;
     const boolean on = *frame % 2;
 
-    for (int i = 0; i < kNumLeds; i = i + 3) 
+    for (int i = 0; i < kNumLeds; i = i + 3)
     {
         // Turn every third pixel on or off
         CRGB color = on ? colorWheel((i + *frame) % 255) : CRGB::Black;
-        leds[i + offset] = color;    
+        leds[i + offset] = color;
     }
-    
+
     FastLED.show();
 }
 
@@ -390,7 +410,7 @@ void readModeStateFromEEPROM()
 {
     // Read the mode value from persistant storage
     uint8_t value = EEPROM.read(kModeAddress);
-  
+
     // Check if the mode is out of range
     if (value > MAX_MODE)
     {
@@ -438,13 +458,13 @@ void buttonPressed()
         {
             // Go to the next mode
             uint8_t newMode = currentMode + 1;
-    
+
             // Cycle back to the first mode if necessary
             if (newMode > MAX_MODE)
             {
                 newMode = 0;
             }
-      
+
             currentMode = newMode;
         }
     }
@@ -464,7 +484,7 @@ void checkBrightness()
 {
     // Read the raw value from the potentiometer
     uint16_t sensorValueNew = analogRead(kBrightnessPin);
-  
+
 //    // Clip the values to 1 - 650
     const int16_t minSensorValue = 1;
     const int16_t maxSensorValue = 1000;
@@ -473,7 +493,7 @@ void checkBrightness()
     sensorValueNew = maxSensorValue - constrain(sensorValueNew, minSensorValue, maxSensorValue);
 
     // Remove jitter
-    const int16_t acceptedRange = 10; 
+    const int16_t acceptedRange = 10;
     int16_t range = sensorValueNew - sensorValue;
     range = abs(range);
 
@@ -523,19 +543,19 @@ void checkBrightness()
 
 // Input a value 0 to 255 to get a color value.
 // The colours are a transition r - g - b - back to r.
-CRGB colorWheel(byte wheelPos) 
+CRGB colorWheel(byte wheelPos)
 {
     wheelPos = 255 - wheelPos;
-    if (wheelPos < 85) 
+    if (wheelPos < 85)
     {
         return CRGB(255 - wheelPos * 3, 0, wheelPos * 3);
-    } 
-    else if (wheelPos < 170) 
+    }
+    else if (wheelPos < 170)
     {
         wheelPos -= 85;
         return CRGB(0, wheelPos * 3, 255 - wheelPos * 3);
     }
-    else 
+    else
     {
         wheelPos -= 170;
         return CRGB(wheelPos * 3, 255 - wheelPos * 3, 0);
